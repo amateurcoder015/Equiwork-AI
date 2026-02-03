@@ -3,7 +3,7 @@ from ..store.db import db
 from ..agents.rebalance_agent import RebalanceAgent
 from ..services.load_score import update_employee_status
 from ..models.task import Task, TaskType
-from ..seed.demo_data import seed_data # Import seed_data to re-initialize
+from ..seed.demo_data import seed_data
 import uuid
 
 router = APIRouter()
@@ -25,6 +25,7 @@ def sync_jira():
         Task(
             id=str(uuid.uuid4()),
             title="Emergency Server Patch",
+            description="Patching a critical zero-day vulnerability. Requires immediate attention.",
             complexity=9,
             deadline_urgency=10,
             visibility=10, 
@@ -33,9 +34,10 @@ def sync_jira():
         ),
         Task(
             id=str(uuid.uuid4()),
-            title="Fix Memory Leak in Auth Module",
+            title="Fix Memory Leak",
+            description="Investigating memory leak in auth module.",
             complexity=8,
-            deadline_urgency=7,
+            deadline_urgency=8,
             visibility=5,
             type=TaskType.MAINTENANCE,
             assignee_id="e1"
@@ -45,9 +47,9 @@ def sync_jira():
         db.tasks[t.id] = t
     return {"status": "Synced", "new_tasks": len(new_tasks)}
 
-# --- Data Endpoints ---
 @router.get("/team")
 def get_team():
+    # Refresh scores before returning
     for emp in db.get_all_employees():
         tasks = db.get_tasks_by_assignee(emp.id)
         update_employee_status(emp, tasks)
@@ -57,7 +59,6 @@ def get_team():
 def get_tasks():
     return list(db.tasks.values())
 
-# --- Agent Endpoints ---
 @router.post("/agent/run")
 def run_agent():
     result = agent.run()
@@ -71,8 +72,10 @@ def get_interventions():
 def approve_intervention(intervention_id: str):
     interventions = db.get_interventions()
     target = next((i for i in interventions if i["id"] == intervention_id), None)
+    
     if not target:
         raise HTTPException(status_code=404, detail="Intervention not found")
+
     db.update_task_assignee(target["task_id"], target["to_emp"])
     db.remove_intervention(intervention_id)
     return {"status": "Approved", "msg": "Workload rebalanced."}

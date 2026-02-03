@@ -5,4 +5,3 @@ streamlit>=1.24.0
 pandas>=2.0.0
 requests>=2.31.0
 google-generativeai  # Add this for AI capabilities
-huggingface_hub_TOKEN = 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

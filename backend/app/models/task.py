@@ -9,11 +9,12 @@ class TaskType(str, Enum):
 class Task(BaseModel):
     id: str
     title: str
-    complexity: int             # 1-10
-    deadline_urgency: int       # 1-10
-    meeting_density: int = 0    # 1-10
-    context_switches: int = 0   # 1-10
-    visibility: int             # 1-10
+    description: str  # <--- NEW FIELD
+    complexity: int             
+    deadline_urgency: int       
+    meeting_density: int = 0    
+    context_switches: int = 0   
+    visibility: int             
     type: TaskType
     assignee_id: Optional[str] = None
     
