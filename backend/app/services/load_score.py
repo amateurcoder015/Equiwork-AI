@@ -1,26 +1,30 @@
 from typing import List
 from ..models.employee import Employee, EmployeeStatus
 from ..models.task import Task
+from ..services.llm_service import get_ai_complexity
 
-def calculate_single_task_load(task: Task) -> float:
-    # Formula: (Complexity * Deadline) + (Meeting * Switches) + (HighVis * 1.5)
-    base = (task.complexity * task.deadline_urgency)
-    overhead = (task.meeting_density * task.context_switches)
-    vis = (task.visibility * 1.5) if task.is_high_visibility else task.visibility
-    return base + overhead + vis
-
-def update_employee_status(employee: Employee, tasks: List[Task]):
+def update_employee_status(employee, tasks):
     if not tasks:
         employee.load_score = 0
-        employee.status = EmployeeStatus.GREEN
+        employee.status = "Green"
         return
 
-    raw_total = sum(calculate_single_task_load(t) for t in tasks)
+    raw_total = 0
+    for t in tasks:
+        # Use AI to determine complexity if it's currently at a default/zero
+        if t.complexity == 0:
+            ai_vals = get_ai_complexity(t.title)
+            t.complexity = ai_vals['complexity']
+            t.context_switches = ai_vals['context_switch']
+        
+        # Formula from your original code
+        base = (t.complexity * t.deadline_urgency)
+        overhead = (t.meeting_density * t.context_switches)
+        raw_total += (base + overhead)
     
-    # Normalize: We assume ~250 is max possible load for one person
     normalized = min(100, (raw_total / 250) * 100)
-    
     employee.load_score = round(normalized, 1)
+    # ... rest of your status logic (RED/YELLOW/GREEN) ...
 
     if employee.load_score > 85:
         employee.status = EmployeeStatus.RED

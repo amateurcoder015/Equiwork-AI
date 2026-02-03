@@ -1,52 +1,53 @@
 import uuid
+import json
 from .base_agent import BaseAgent
 from ..store.db import db
-from ..services.load_score import update_employee_status
-from ..models.employee import EmployeeStatus
+from ..services.llm_service import ask_llm
 
 class RebalanceAgent(BaseAgent):
     def run(self):
-        # 1. Update all scores first
         employees = db.get_all_employees()
-        for emp in employees:
-            tasks = db.get_tasks_by_assignee(emp.id)
-            update_employee_status(emp, tasks)
-            db.update_employee(emp)
+        overloaded = [e for e in employees if e.status == "Red"]
+        underutilized = [e for e in employees if e.status == "Green"]
 
-        # 2. Identify Burnout (RED) vs Opportunity (GREEN)
-        overloaded = [e for e in employees if e.status == EmployeeStatus.RED]
-        underutilized = [e for e in employees if e.status == EmployeeStatus.GREEN]
+        if not overloaded or not underutilized:
+            return {"status": "Team is balanced.", "actions_proposed": 0}
 
-        if not overloaded:
-            return {"status": "No burnout detected", "actions": 0}
+        # Context for AI
+        context = {
+            "overloaded": [{"name": e.name, "tasks": [{"id": t.id, "title": t.title} for t in db.get_tasks_by_assignee(e.id)]} for e in overloaded],
+            "available": [{"id": e.id, "name": e.name, "skills": e.skills} for e in underutilized]
+        }
 
-        # 3. Plan Interventions
-        actions_proposed = 0
-        for victim in overloaded:
-            # Find their hardest task
-            victim_tasks = db.get_tasks_by_assignee(victim.id)
-            victim_tasks.sort(key=lambda t: t.complexity, reverse=True)
+        prompt = f"Balance this team workload. Return ONLY JSON: {{\"task_id\": \"id\", \"to_emp_id\": \"id\", \"reason\": \"why\"}}. Data: {json.dumps(context)}"
+
+        try:
+            raw = ask_llm(prompt)
+            start, end = raw.find('{'), raw.rfind('}') + 1
+            plan = json.loads(raw[start:end])
             
-            if not victim_tasks or not underutilized:
-                continue
-
-            task_to_move = victim_tasks[0]
-            receiver = underutilized[0] # Simplest logic: pick first available
-
-            # 4. Propose Action (Don't execute yet)
             intervention = {
                 "id": str(uuid.uuid4()),
                 "type": "REBALANCE",
-                "description": f"Move '{task_to_move.title}' from {victim.name} (Load: {victim.load_score}) to {receiver.name} (Load: {receiver.load_score})",
-                "task_id": task_to_move.id,
-                "from_emp": victim.id,
-                "to_emp": receiver.id
+                "description": f"AI Suggestion: {plan['reason']}",
+                "task_id": plan['task_id'],
+                "from_emp": overloaded[0].id,
+                "to_emp": plan['to_emp_id']
             }
-            
-            # Prevent duplicate proposals
-            existing = [i for i in db.get_interventions() if i['task_id'] == task_to_move.id]
-            if not existing:
-                db.add_intervention(intervention)
-                actions_proposed += 1
-
-        return {"status": "Success", "actions_proposed": actions_proposed}
+            db.add_intervention(intervention)
+            return {"status": "Success", "actions_proposed": 1}
+        except:
+            # SAFETY FALLBACK: If AI fails, use the first available person
+            victim_tasks = db.get_tasks_by_assignee(overloaded[0].id)
+            if victim_tasks:
+                fallback = {
+                    "id": str(uuid.uuid4()),
+                    "type": "REBALANCE",
+                    "description": "Rule-based Fallback: Moving task to balance load.",
+                    "task_id": victim_tasks[0].id,
+                    "from_emp": overloaded[0].id,
+                    "to_emp": underutilized[0].id
+                }
+                db.add_intervention(fallback)
+                return {"status": "Success (Fallback Logic)", "actions_proposed": 1}
+            return {"status": "Error creating intervention", "actions_proposed": 0}
