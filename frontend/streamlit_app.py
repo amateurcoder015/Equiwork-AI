@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 
-API_URL = "http://localhost:8000"
+API_URL = "https://equiwork-ai.onrender.com/"
 
 st.set_page_config(page_title="EquiWork AI", layout="wide")
 
