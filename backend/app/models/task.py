@@ -9,7 +9,7 @@ class TaskType(str, Enum):
 class Task(BaseModel):
     id: str
     title: str
-    description: str  # <--- NEW FIELD
+    description: str  
     complexity: int             
     deadline_urgency: int       
     meeting_density: int = 0    
